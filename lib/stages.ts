@@ -52,10 +52,46 @@ export interface StageDefinition {
 // ── Level metadata ──────────────────────────────────────────────────────────────
 
 export const LEVELS = [
-  { id: 1, name: "はじめの一歩",     icon: "🖐️", color: "green",  description: "ほうちょうも火もつかわないよ！ひとりでできるよ！" },
-  { id: 2, name: "チン＆トースター", icon: "⚡", color: "blue",   description: "電子レンジやトースターをつかってみよう！" },
-  { id: 3, name: "ほうちょうデビュー", icon: "🔪", color: "orange", description: "はじめてほうちょうをつかうよ！おうちのひとといっしょに" },
-  { id: 4, name: "コンロマスター",   icon: "🔥", color: "rose",  description: "フライパンやコンロをつかうほんとうのりょうり！かならずおうちのひとと" },
+  {
+    id: 1,
+    name: "はじめの一歩",
+    icon: "🖐️",
+    color: "green",
+    description: "ほうちょうも火もつかわないよ！ひとりでできるよ！",
+    toolName: null as string | null,
+    toolIcon: null as string | null,
+    unlockCost: 0,
+  },
+  {
+    id: 2,
+    name: "チン＆トースター",
+    icon: "⚡",
+    color: "blue",
+    description: "電子レンジやトースターをつかってみよう！",
+    toolName: "レンジ・トースター",
+    toolIcon: "⚡",
+    unlockCost: 20,
+  },
+  {
+    id: 3,
+    name: "ほうちょうデビュー",
+    icon: "🔪",
+    color: "orange",
+    description: "はじめてほうちょうをつかうよ！おうちのひとといっしょに",
+    toolName: "ほうちょう",
+    toolIcon: "🔪",
+    unlockCost: 50,
+  },
+  {
+    id: 4,
+    name: "コンロマスター",
+    icon: "🔥",
+    color: "rose",
+    description: "フライパンやコンロをつかうほんとうのりょうり！かならずおうちのひとと",
+    toolName: "コンロ・フライパン",
+    toolIcon: "🔥",
+    unlockCost: 90,
+  },
 ];
 
 // ── Stage definitions ─────────────────────────────────────────────────────────
@@ -726,16 +762,32 @@ export function getLevelStages(levelId: number): StageDefinition[] {
   return ALL_STAGES.filter((s) => s.level === levelId);
 }
 
-/**
- * Level 1 is always accessible. Level N (N>1) unlocks once every
- * recipe in level N-1 has been cooked for real (confirmed by a parent).
- */
-export function isLevelAccessible(
+export function getLevel(levelId: number) {
+  return LEVELS.find((l) => l.id === levelId);
+}
+
+/** Level 1 needs no tool. Level N (N>1) unlocks once its tool has been bought with coins. */
+export function isLevelUnlocked(
   levelId: number,
-  cookingDoneIds: Set<number>
+  unlockedLevelIds: Set<number>
 ): boolean {
   if (levelId <= 1) return true;
-  return getLevelStages(levelId - 1).every((s) => cookingDoneIds.has(s.id));
+  return unlockedLevelIds.has(levelId);
+}
+
+/**
+ * A level's tool can be bought once the previous level is unlocked and
+ * there are enough coins — tools are bought in order, one at a time.
+ */
+export function canBuyLevel(
+  levelId: number,
+  unlockedLevelIds: Set<number>,
+  totalCoins: number
+): boolean {
+  const level = getLevel(levelId);
+  if (!level || isLevelUnlocked(levelId, unlockedLevelIds)) return false;
+  if (!isLevelUnlocked(levelId - 1, unlockedLevelIds)) return false;
+  return totalCoins >= level.unlockCost;
 }
 
 /** True once every recipe in the level has been cooked for real. */

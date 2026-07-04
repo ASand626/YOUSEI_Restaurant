@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getStage, isLevelComplete } from "@/lib/stages";
+import { getStage, canBuyLevel, getLevel } from "@/lib/stages";
 import { getCurrentUser, loginOrRegister, logout, userScopedKey } from "@/lib/auth";
 import LoginScreen from "@/components/LoginScreen";
 import StageSelectScreen from "@/components/StageSelectScreen";
@@ -10,9 +10,10 @@ import RealCookingScreen from "@/components/RealCookingScreen";
 import ParentConfirmScreen from "@/components/ParentConfirmScreen";
 
 // ── Persistence keys (v2 — level-based redesign; namespaced per user) ─────────
-const KEY_GAME_CLEARED  = "fr-game-cleared-v2";
-const KEY_COOKING_DONE  = "fr-cooking-done-v2";
-const KEY_COINS         = "fr-coins-v2";
+const KEY_GAME_CLEARED    = "fr-game-cleared-v2";
+const KEY_COOKING_DONE    = "fr-cooking-done-v2";
+const KEY_COINS           = "fr-coins-v2";
+const KEY_UNLOCKED_LEVELS = "fr-unlocked-levels-v1";
 
 // ── Screen types ──────────────────────────────────────────────────────────────
 type Screen =
@@ -30,8 +31,8 @@ export default function App() {
   const [gameClearedIds, setGameClearedIds] = useState<Set<number>>(new Set());
   const [cookingDoneIds, setCookingDoneIds] = useState<Set<number>>(new Set());
   const [totalCoins,    setTotalCoins]    = useState(0);
+  const [unlockedLevelIds, setUnlockedLevelIds] = useState<Set<number>>(new Set([1]));
   const [hydrated,      setHydrated]      = useState(false);
-  const [didLevelUp,    setDidLevelUp]    = useState(false);
 
   const loadProgressFor = (name: string) => {
     try {
@@ -41,6 +42,8 @@ export default function App() {
       setCookingDoneIds(cd ? new Set(JSON.parse(cd) as number[]) : new Set());
       const coins = parseInt(localStorage.getItem(userScopedKey(KEY_COINS, name)) ?? "0", 10);
       setTotalCoins(isNaN(coins) ? 0 : coins);
+      const ul = localStorage.getItem(userScopedKey(KEY_UNLOCKED_LEVELS, name));
+      setUnlockedLevelIds(ul ? new Set(JSON.parse(ul) as number[]) : new Set([1]));
     } catch { /* ignore */ }
   };
 
@@ -70,6 +73,7 @@ export default function App() {
     setGameClearedIds(new Set());
     setCookingDoneIds(new Set());
     setTotalCoins(0);
+    setUnlockedLevelIds(new Set([1]));
     setScreen("login");
   };
 
@@ -95,19 +99,7 @@ export default function App() {
     } catch { /* ignore */ }
   };
 
-  /** Locks in whether finishing this stage's real cooking will complete its level,
-   *  computed before cookingDoneIds is mutated so it can't change mid-celebration. */
-  const goToParentConfirm = () => {
-    const stage = getStage(stageId);
-    if (stage) {
-      const wouldBeDone = new Set([...cookingDoneIds, stageId]);
-      setDidLevelUp(
-        !isLevelComplete(stage.level, cookingDoneIds) &&
-          isLevelComplete(stage.level, wouldBeDone)
-      );
-    }
-    setScreen("parentConfirm");
-  };
+  const goToParentConfirm = () => setScreen("parentConfirm");
 
   /** Called after parent confirms cooking */
   const handleCookingConfirmed = () => {
@@ -127,6 +119,25 @@ export default function App() {
 
     // Delay to let celebration animation play, then return to stage select
     setTimeout(goToStageSelect, 2400);
+  };
+
+  /** Spends coins to buy the next level's tool. Returns whether the purchase went through. */
+  const handleUnlockLevel = (levelId: number): boolean => {
+    if (!username || !canBuyLevel(levelId, unlockedLevelIds, totalCoins)) return false;
+    const level = getLevel(levelId);
+    if (!level) return false;
+
+    const newCoins = totalCoins - level.unlockCost;
+    const updatedUnlocked = new Set([...unlockedLevelIds, levelId]);
+    setTotalCoins(newCoins);
+    setUnlockedLevelIds(updatedUnlocked);
+
+    try {
+      localStorage.setItem(userScopedKey(KEY_COINS, username), String(newCoins));
+      localStorage.setItem(userScopedKey(KEY_UNLOCKED_LEVELS, username), JSON.stringify([...updatedUnlocked]));
+    } catch { /* ignore */ }
+
+    return true;
   };
 
   // ── Loading ───────────────────────────────────────────────────────────────
@@ -156,9 +167,11 @@ export default function App() {
         gameClearedIds={gameClearedIds}
         cookingDoneIds={cookingDoneIds}
         totalCoins={totalCoins}
+        unlockedLevelIds={unlockedLevelIds}
         onSelectStage={goToGame}
         onRealCooking={goToRealCooking}
         onLogout={handleLogout}
+        onUnlockLevel={handleUnlockLevel}
       />
     );
   }
@@ -191,7 +204,6 @@ export default function App() {
     return (
       <ParentConfirmScreen
         stage={currentStage}
-        didLevelUp={didLevelUp}
         onConfirmed={handleCookingConfirmed}
         onSkip={goToStageSelect}
       />

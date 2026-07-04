@@ -5,14 +5,13 @@ import { StageDefinition } from "@/lib/stages";
 
 interface Props {
   stage: StageDefinition;
-  didLevelUp: boolean;
   onConfirmed: () => void;
   onSkip: () => void;
 }
 
 const CELEBRATION = ["🎉", "⭐", "✨", "🌟", "🎊", "💫", "🏆", "🥇"];
 
-export default function ParentConfirmScreen({ stage, didLevelUp, onConfirmed, onSkip }: Props) {
+export default function ParentConfirmScreen({ stage, onConfirmed, onSkip }: Props) {
   const [confirmed, setConfirmed] = useState(false);
 
   const handleConfirm = () => {
@@ -122,9 +121,7 @@ export default function ParentConfirmScreen({ stage, didLevelUp, onConfirmed, on
                   {stage.title}マスター！
                 </p>
                 <p className="text-sm text-gray-600 mt-2">
-                  {didLevelUp
-                    ? "🎉 レベルアップ！つぎのレベルがかいほうされたよ！"
-                    : "また ちがう レシピにも ちょうせんしてみよう！"}
+                  コインを ためて、つぎの どうぐを てにいれよう！
                 </p>
               </div>
 

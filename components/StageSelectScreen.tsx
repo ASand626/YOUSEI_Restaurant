@@ -1,6 +1,13 @@
 "use client";
-import { motion } from "framer-motion";
-import { ALL_STAGES, LEVELS, isLevelAccessible, isLevelComplete } from "@/lib/stages";
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  ALL_STAGES,
+  LEVELS,
+  isLevelUnlocked,
+  isLevelComplete,
+  canBuyLevel,
+} from "@/lib/stages";
 
 const LEVEL_BG: Record<string, string> = {
   green:  "linear-gradient(135deg,#F0FFF4,#C6F6D5)",
@@ -28,9 +35,11 @@ interface Props {
   gameClearedIds: Set<number>;
   cookingDoneIds: Set<number>;
   totalCoins: number;
+  unlockedLevelIds: Set<number>;
   onSelectStage: (stageId: number) => void;
   onRealCooking: (stageId: number) => void;
   onLogout: () => void;
+  onUnlockLevel: (levelId: number) => boolean;
 }
 
 export default function StageSelectScreen({
@@ -38,14 +47,24 @@ export default function StageSelectScreen({
   gameClearedIds,
   cookingDoneIds,
   totalCoins,
+  unlockedLevelIds,
   onSelectStage,
   onRealCooking,
   onLogout,
+  onUnlockLevel,
 }: Props) {
+  const [celebration, setCelebration] = useState<{ icon: string; name: string } | null>(null);
+
   const stagesByLevel = LEVELS.map((lvl) => ({
     level: lvl,
     stages: ALL_STAGES.filter((s) => s.level === lvl.id),
   }));
+
+  const handleBuy = (levelId: number, toolIcon: string, toolName: string) => {
+    if (onUnlockLevel(levelId)) {
+      setCelebration({ icon: toolIcon, name: toolName });
+    }
+  };
 
   return (
     <main className="min-h-screen pb-10">
@@ -74,9 +93,11 @@ export default function StageSelectScreen({
 
       <div className="px-4 pt-4 flex flex-col gap-6 max-w-sm mx-auto">
         {stagesByLevel.map(({ level, stages }) => {
-          const accessible = isLevelAccessible(level.id, cookingDoneIds);
+          const unlocked = isLevelUnlocked(level.id, unlockedLevelIds);
           const complete = isLevelComplete(level.id, cookingDoneIds);
           const doneCount = stages.filter((s) => cookingDoneIds.has(s.id)).length;
+          const canBuy = !unlocked && canBuyLevel(level.id, unlockedLevelIds, totalCoins);
+          const prevUnlocked = isLevelUnlocked(level.id - 1, unlockedLevelIds);
 
           return (
             <section key={level.id}>
@@ -97,7 +118,7 @@ export default function StageSelectScreen({
                     {level.description}
                   </p>
                 </div>
-                {!accessible ? (
+                {!unlocked ? (
                   <span className="text-xl shrink-0">🔒</span>
                 ) : (
                   <span
@@ -109,6 +130,40 @@ export default function StageSelectScreen({
                 )}
               </div>
 
+              {/* Tool shop panel for locked levels */}
+              {!unlocked && level.toolName && (
+                <div
+                  className="rounded-2xl p-3 mb-3 flex items-center gap-3"
+                  style={{ background: "#F7FAFC", border: "2px dashed #CBD5E0" }}
+                >
+                  <span className="text-3xl shrink-0">{level.toolIcon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black text-gray-600">{level.toolName}</p>
+                    <p className="text-[10px] text-gray-400">
+                      {prevUnlocked
+                        ? `💰${level.unlockCost}コインで てにはいるよ！`
+                        : "まえの どうぐを さきに てにいれてね"}
+                    </p>
+                  </div>
+                  {prevUnlocked && (
+                    <motion.button
+                      whileTap={canBuy ? { scale: 0.94 } : {}}
+                      onClick={() => canBuy && handleBuy(level.id, level.toolIcon!, level.toolName!)}
+                      disabled={!canBuy}
+                      className="shrink-0 py-2 px-3 rounded-xl text-white font-black text-[11px] shadow"
+                      style={{
+                        background: canBuy
+                          ? "linear-gradient(135deg,#48BB78,#276749)"
+                          : "#CBD5E0",
+                        cursor: canBuy ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      てにいれる！
+                    </motion.button>
+                  )}
+                </div>
+              )}
+
               {/* Stage cards */}
               <div className="grid grid-cols-3 gap-2.5">
                 {stages.map((stage) => {
@@ -116,7 +171,7 @@ export default function StageSelectScreen({
                   const cookingDone = cookingDoneIds.has(stage.id);
                   const cookingAvailable = gameCleared && !cookingDone;
 
-                  const canTapGame = accessible;
+                  const canTapGame = unlocked;
 
                   return (
                     <div key={stage.id} className="flex flex-col gap-1.5">
@@ -138,12 +193,12 @@ export default function StageSelectScreen({
                               ? LEVEL_BORDER[level.color]
                               : "#E2E8F0"
                           }`,
-                          opacity: accessible ? 1 : 0.45,
+                          opacity: unlocked ? 1 : 0.45,
                           cursor: canTapGame ? "pointer" : "default",
                         }}
                       >
                         <span className="text-2xl leading-none">
-                          {accessible ? stage.icon : "🔒"}
+                          {unlocked ? stage.icon : "🔒"}
                         </span>
                         <span
                           className="text-[9px] font-bold leading-tight text-center"
@@ -191,6 +246,54 @@ export default function StageSelectScreen({
           <span>🔒 ロック中</span>
         </div>
       </div>
+
+      {/* Unlock celebration */}
+      <AnimatePresence>
+        {celebration && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setCelebration(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ backgroundColor: "rgba(80,40,100,0.55)" }}
+          >
+            <motion.div
+              initial={{ scale: 0.4, opacity: 0, y: 60 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.7, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 340, damping: 22 }}
+              className="rounded-3xl p-7 max-w-xs w-full text-center shadow-2xl"
+              style={{
+                background: "linear-gradient(135deg,#FFFBEA,#F0FFF4)",
+                borderWidth: 4,
+                borderStyle: "solid",
+                borderColor: "#F6E05E",
+              }}
+            >
+              <motion.div
+                className="text-6xl mb-2"
+                animate={{ scale: [1, 1.25, 1, 1.15, 1], rotate: [0, -8, 8, -4, 0] }}
+                transition={{ duration: 0.9 }}
+              >
+                {celebration.icon}
+              </motion.div>
+              <h2 className="text-xl font-black mb-1.5 text-amber-800">
+                🎉 あたらしい どうぐを てにいれた！
+              </h2>
+              <p className="text-base font-black text-green-700 mb-4">{celebration.name}</p>
+              <motion.button
+                whileTap={{ scale: 0.94 }}
+                onClick={() => setCelebration(null)}
+                className="w-full py-3 rounded-2xl text-white font-black text-base shadow-lg"
+                style={{ background: "linear-gradient(135deg,#48BB78,#276749)" }}
+              >
+                やったー！
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }

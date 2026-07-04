@@ -24,19 +24,23 @@ const LEVEL_TEXT: Record<string, string> = {
 };
 
 interface Props {
+  username: string;
   gameClearedIds: Set<number>;
   cookingDoneIds: Set<number>;
   totalCoins: number;
   onSelectStage: (stageId: number) => void;
   onRealCooking: (stageId: number) => void;
+  onLogout: () => void;
 }
 
 export default function StageSelectScreen({
+  username,
   gameClearedIds,
   cookingDoneIds,
   totalCoins,
   onSelectStage,
   onRealCooking,
+  onLogout,
 }: Props) {
   const stagesByLevel = LEVELS.map((lvl) => ({
     level: lvl,
@@ -55,6 +59,17 @@ export default function StageSelectScreen({
           <span>💰</span>
           <span className="font-black text-yellow-800 text-sm">{totalCoins}</span>
         </div>
+      </div>
+
+      {/* User bar */}
+      <div className="flex items-center justify-between px-4 pt-3 max-w-sm mx-auto">
+        <span className="text-xs font-bold text-purple-500">🧑 {username}</span>
+        <button
+          onClick={onLogout}
+          className="text-[11px] font-bold text-gray-400 hover:text-gray-500"
+        >
+          なまえを きりかえる
+        </button>
       </div>
 
       <div className="px-4 pt-4 flex flex-col gap-6 max-w-sm mx-auto">

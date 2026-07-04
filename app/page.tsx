@@ -2,18 +2,21 @@
 
 import { useState, useEffect } from "react";
 import { getStage, isLevelComplete } from "@/lib/stages";
+import { getCurrentUser, loginOrRegister, logout, userScopedKey } from "@/lib/auth";
+import LoginScreen from "@/components/LoginScreen";
 import StageSelectScreen from "@/components/StageSelectScreen";
 import GameScreen from "@/components/GameScreen";
 import RealCookingScreen from "@/components/RealCookingScreen";
 import ParentConfirmScreen from "@/components/ParentConfirmScreen";
 
-// ── Persistence keys (v2 — level-based redesign) ───────────────────────────────
+// ── Persistence keys (v2 — level-based redesign; namespaced per user) ─────────
 const KEY_GAME_CLEARED  = "fr-game-cleared-v2";
 const KEY_COOKING_DONE  = "fr-cooking-done-v2";
 const KEY_COINS         = "fr-coins-v2";
 
 // ── Screen types ──────────────────────────────────────────────────────────────
 type Screen =
+  | "login"
   | "stageSelect"
   | "gamePlaying"
   | "realCooking"
@@ -21,7 +24,8 @@ type Screen =
 
 // ── App ───────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [screen,        setScreen]        = useState<Screen>("stageSelect");
+  const [screen,        setScreen]        = useState<Screen>("login");
+  const [username,      setUsername]      = useState<string | null>(null);
   const [stageId,       setStageId]       = useState(1);
   const [gameClearedIds, setGameClearedIds] = useState<Set<number>>(new Set());
   const [cookingDoneIds, setCookingDoneIds] = useState<Set<number>>(new Set());
@@ -29,20 +33,45 @@ export default function App() {
   const [hydrated,      setHydrated]      = useState(false);
   const [didLevelUp,    setDidLevelUp]    = useState(false);
 
-  // Hydrate from localStorage
-  useEffect(() => {
+  const loadProgressFor = (name: string) => {
     try {
-      const gc = localStorage.getItem(KEY_GAME_CLEARED);
-      if (gc) setGameClearedIds(new Set(JSON.parse(gc) as number[]));
-      const cd = localStorage.getItem(KEY_COOKING_DONE);
-      if (cd) setCookingDoneIds(new Set(JSON.parse(cd) as number[]));
-      const coins = parseInt(localStorage.getItem(KEY_COINS) ?? "0", 10);
-      if (!isNaN(coins)) setTotalCoins(coins);
+      const gc = localStorage.getItem(userScopedKey(KEY_GAME_CLEARED, name));
+      setGameClearedIds(gc ? new Set(JSON.parse(gc) as number[]) : new Set());
+      const cd = localStorage.getItem(userScopedKey(KEY_COOKING_DONE, name));
+      setCookingDoneIds(cd ? new Set(JSON.parse(cd) as number[]) : new Set());
+      const coins = parseInt(localStorage.getItem(userScopedKey(KEY_COINS, name)) ?? "0", 10);
+      setTotalCoins(isNaN(coins) ? 0 : coins);
     } catch { /* ignore */ }
+  };
+
+  // Resume the logged-in profile from localStorage, if any
+  useEffect(() => {
+    const current = getCurrentUser();
+    if (current) {
+      setUsername(current);
+      loadProgressFor(current);
+      setScreen("stageSelect");
+    }
     setHydrated(true);
   }, []);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
+
+  const handleLogin = (name: string) => {
+    loginOrRegister(name);
+    setUsername(name);
+    loadProgressFor(name);
+    setScreen("stageSelect");
+  };
+
+  const handleLogout = () => {
+    logout();
+    setUsername(null);
+    setGameClearedIds(new Set());
+    setCookingDoneIds(new Set());
+    setTotalCoins(0);
+    setScreen("login");
+  };
 
   const goToGame = (id: number) => {
     setStageId(id);
@@ -58,10 +87,11 @@ export default function App() {
 
   /** Called when game is cleared for a stage (first time) */
   const handleGameClear = () => {
+    if (!username) return;
     const updated = new Set([...gameClearedIds, stageId]);
     setGameClearedIds(updated);
     try {
-      localStorage.setItem(KEY_GAME_CLEARED, JSON.stringify([...updated]));
+      localStorage.setItem(userScopedKey(KEY_GAME_CLEARED, username), JSON.stringify([...updated]));
     } catch { /* ignore */ }
   };
 
@@ -82,7 +112,7 @@ export default function App() {
   /** Called after parent confirms cooking */
   const handleCookingConfirmed = () => {
     const stage = getStage(stageId);
-    if (!stage) return;
+    if (!stage || !username) return;
 
     const updatedCooking = new Set([...cookingDoneIds, stageId]);
     setCookingDoneIds(updatedCooking);
@@ -91,8 +121,8 @@ export default function App() {
     setTotalCoins(newCoins);
 
     try {
-      localStorage.setItem(KEY_COOKING_DONE, JSON.stringify([...updatedCooking]));
-      localStorage.setItem(KEY_COINS, String(newCoins));
+      localStorage.setItem(userScopedKey(KEY_COOKING_DONE, username), JSON.stringify([...updatedCooking]));
+      localStorage.setItem(userScopedKey(KEY_COINS, username), String(newCoins));
     } catch { /* ignore */ }
 
     // Delay to let celebration animation play, then return to stage select
@@ -115,14 +145,20 @@ export default function App() {
 
   // ── Screens ───────────────────────────────────────────────────────────────
 
+  if (screen === "login" || !username) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
   if (screen === "stageSelect") {
     return (
       <StageSelectScreen
+        username={username}
         gameClearedIds={gameClearedIds}
         cookingDoneIds={cookingDoneIds}
         totalCoins={totalCoins}
         onSelectStage={goToGame}
         onRealCooking={goToRealCooking}
+        onLogout={handleLogout}
       />
     );
   }
